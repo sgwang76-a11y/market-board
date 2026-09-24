@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -28,7 +29,7 @@ ITEMS = {
     "dji":    (["^DJI"], "^dji"),
     "ixic":   (["^IXIC"], "^ndq"),
     "n225":   (["^N225"], "^nkx"),
-    "topix":  (["^TOPX", "998405.T"], "^tpx"),
+    "topix":  (["^TOPX", "^TPX", "998405.T"], "^tpx"),
 }
 
 
@@ -57,8 +58,48 @@ def from_stooq(sym):
     return float(rows[-1]["Close"]), float(rows[-2]["Close"])
 
 
+def _num(x):
+    return float(x.replace(",", "").replace("+", ""))
+
+
+def from_yahoo_jp(code):
+    """Yahoo!ファイナンス（日本）のページから現在値と前日比を読む"""
+    html = http_get("https://finance.yahoo.co.jp/quote/" + code)
+    m = re.search(r'"price":"([\d,\.]+)"', html)
+    c = re.search(r'"priceChange":"([-+]?[\d,\.]+)"', html) or \
+        re.search(r'"changePrice":"([-+]?[\d,\.]+)"', html)
+    if not m or not c:
+        raise ValueError("pattern not found")
+    price = _num(m.group(1))
+    return price, price - _num(c.group(1))
+
+
+def from_google(q):
+    """Google Finance のページから現在値と前日終値を読む"""
+    html = http_get("https://www.google.com/finance/quote/" + q + "?hl=en")
+    m = re.search(r'data-last-price="([\d\.]+)"', html)
+    pc = re.search(r'Previous close</div>.*?>([\d,]+\.\d+)<', html, re.S)
+    if not m or not pc:
+        raise ValueError("pattern not found")
+    return float(m.group(1)), _num(pc.group(1))
+
+
+# 追加の取得先（Yahoo/Stooqで取れない銘柄用）
+EXTRA = {
+    "topix": [lambda: from_yahoo_jp("998405.T"),
+              lambda: from_google("TOPIX:INDEXTOKYO")],
+}
+
+
 def fetch(key):
     ysyms, ssym = ITEMS[key]
+    for i, f in enumerate(EXTRA.get(key, [])):
+        try:
+            r = f()
+            print("extra OK", key, i, r, file=sys.stderr)
+            return r
+        except Exception as e:
+            print("extra NG", key, i, e, file=sys.stderr)
     for s in ysyms:
         try:
             return from_yahoo(s)
