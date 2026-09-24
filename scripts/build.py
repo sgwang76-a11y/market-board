@@ -30,13 +30,41 @@ ITEMS = {
     "ixic":   (["^IXIC"], "^ndq"),
     "n225":   (["^N225"], "^nkx"),
     "topix":  (["^TOPX", "^TPX", "998405.T"], "^tpx"),
+    "us10y":  (["^TNX"], "10usy.b"),
+    "jp10y":  ([], "10jpy.b"),
 }
 
 
-def http_get(url):
+def http_bytes(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return r.read().decode("utf-8", "replace")
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.read()
+
+
+def http_get(url):
+    return http_bytes(url).decode("utf-8", "replace")
+
+
+def from_mof(col="10年"):
+    """財務省『国債金利情報』CSV（公式・1日1回更新）から10年利回りを読む"""
+    base = "https://www.mof.go.jp/jgbs/reference/interest_rate/"
+    vals = []
+    for name in ("jgbcm.csv", "historical/jgbcm_all.csv", "data/jgbcm_all.csv"):
+        try:
+            text = http_bytes(base + name).decode("cp932", "replace")
+        except Exception as e:
+            print("mof NG", name, e, file=sys.stderr)
+            continue
+        rows = list(csv.reader(io.StringIO(text)))
+        hdr = next((i for i, r in enumerate(rows) if r and r[0].strip() == "基準日"), None)
+        if hdr is None or col not in rows[hdr]:
+            continue
+        ci = rows[hdr].index(col)
+        vals = [r[ci] for r in rows[hdr + 1:] if len(r) > ci]
+        vals = [float(v) for v in vals if re.match(r"^-?\d+(\.\d+)?$", v.strip())]
+        if len(vals) >= 2:
+            return vals[-1], vals[-2]
+    raise ValueError("mof csv not usable")
 
 
 def from_yahoo(sym):
@@ -88,6 +116,7 @@ def from_google(q):
 EXTRA = {
     "topix": [lambda: from_yahoo_jp("998405.T"),
               lambda: from_google("TOPIX:INDEXTOKYO")],
+    "jp10y": [from_mof],
 }
 
 
@@ -159,6 +188,20 @@ def badge(diff):
     return '<span class="fl">変わらず</span>'
 
 
+def fmt_rate(v):
+    return '%.3f<span class="u">%%</span>' % v
+
+
+def rate_diff(diff):
+    if diff > 0:
+        b = '<span class="up">&#9650;上昇</span>'
+    elif diff < 0:
+        b = '<span class="dn">&#9660;低下</span>'
+    else:
+        b = '<span class="fl">変わらず</span>'
+    return '%s%.3f %s' % ("+" if diff > 0 else ("-" if diff < 0 else "±"), abs(diff), b)
+
+
 def fx_diff(diff):
     y, s = split2(diff)
     arrow = "円安" if diff > 0 else ("円高" if diff < 0 else "変わらず")
@@ -189,6 +232,12 @@ def main():
         diff = d["price"] - d["prev"]
         return '<div class="val">%s</div><div class="chg">%s</div>' % (main_fmt(d["price"]), diff_fmt(diff))
 
+    def rate(key):
+        d = data.get(key)
+        if not d:
+            return '<div class="rc">&nbsp;</div></td><td class="rv">―</td>'
+        return '<div class="rc">%s</div></td><td class="rv">%s</td>' % (rate_diff(d["price"] - d["prev"]), fmt_rate(d["price"]))
+
     html = TEMPLATE
     repl = {
         "{{USDJPY}}": cell("usdjpy", fmt_fx, fx_diff),
@@ -197,6 +246,8 @@ def main():
         "{{IXIC}}":   cell("ixic", lambda v: fmt_pt(v, 3), lambda x: fmt_pt(x, 3) + " " + badge(x)),
         "{{N225}}":   cell("n225", fmt_yen_index, lambda x: fmt_yen_diff(x) + " " + badge(x)),
         "{{TOPIX}}":  cell("topix", fmt_pt, lambda x: fmt_pt(x) + " " + badge(x)),
+        "{{JP10Y}}":  rate("jp10y"),
+        "{{US10Y}}":  rate("us10y"),
         "{{UPDATED}}": now.strftime("%m/%d %H:%M"),
     }
     for a, b in repl.items():
@@ -220,17 +271,24 @@ body{font-family:"Noto Sans JP","Noto Sans CJK JP","Meiryo","Hiragino Sans",sans
   background:#d3e0f5;-webkit-transform-origin:0 0;transform-origin:0 0;}
 #clock{position:absolute;left:70px;top:25px;font-size:120px;font-weight:bold;color:#e0357f;line-height:1.1;}
 #date{position:absolute;right:80px;top:60px;font-size:48px;font-weight:bold;color:#1a2a6c;}
-table.b{position:absolute;left:60px;top:175px;width:1800px;border-collapse:separate;border-spacing:24px 12px;table-layout:fixed;}
+table.b{position:absolute;left:60px;top:160px;width:1800px;border-collapse:separate;border-spacing:24px 10px;table-layout:fixed;}
 td{vertical-align:top;padding:0;}
-.h{background:#1f2fb8;color:#fff;text-align:center;font-size:56px;font-weight:bold;letter-spacing:8px;height:84px;vertical-align:middle;}
+.h{background:#1f2fb8;color:#fff;text-align:center;font-size:50px;font-weight:bold;letter-spacing:8px;height:72px;vertical-align:middle;}
 .blank{background:transparent;}
-.card{background:#fff;height:320px;position:relative;overflow:hidden;}
-.lb{display:inline-block;margin:18px 0 0 18px;background:#1f2fb8;color:#fff;font-size:36px;font-weight:bold;padding:4px 18px;}
-.val{font-size:70px;font-weight:bold;color:#111;text-align:center;margin-top:22px;white-space:nowrap;letter-spacing:1px;}
-.chg{font-size:40px;font-weight:bold;color:#222;text-align:right;margin:14px 30px 0 0;white-space:nowrap;}
+.card{background:#fff;height:262px;position:relative;overflow:hidden;}
+.lb{display:inline-block;margin:14px 0 0 16px;background:#1f2fb8;color:#fff;font-size:32px;font-weight:bold;padding:4px 18px;}
+.val{font-size:66px;font-weight:bold;color:#111;text-align:center;margin-top:10px;white-space:nowrap;letter-spacing:1px;}
+.chg{font-size:38px;font-weight:bold;color:#222;text-align:right;margin:6px 30px 0 0;white-space:nowrap;}
 .u{font-size:0.5em;margin:0 4px;}
 .up,.dn,.fl{display:inline-block;font-size:30px;color:#fff;padding:2px 10px;margin-left:8px;vertical-align:middle;}
 .up{background:#e0302a;} .dn{background:#1f6fe0;} .fl{background:#777;}
+.rate{background:#fff;height:128px;}
+.rate table{width:100%;height:128px;border-collapse:collapse;}
+.rl{width:1%;padding:0 0 0 16px;vertical-align:middle;white-space:nowrap;}
+.rl span{display:inline-block;background:#1f2fb8;color:#fff;font-size:30px;font-weight:bold;padding:4px 14px;}
+.rc{font-size:30px;font-weight:bold;color:#222;margin-top:12px;white-space:nowrap;}
+.rc .up,.rc .dn,.rc .fl{font-size:26px;}
+.rv{font-size:72px;font-weight:bold;color:#111;text-align:right;padding-right:36px;vertical-align:middle;white-space:nowrap;}
 #note{position:absolute;right:84px;bottom:6px;font-size:20px;color:#334;}
 </style>
 </head>
@@ -259,8 +317,13 @@ td{vertical-align:top;padding:0;}
    <td><div class="card"><span class="lb">ナスダック</span>{{IXIC}}</div></td>
    <td><div class="card"><span class="lb">東証株価指数（TOPIX）</span>{{TOPIX}}</div></td>
   </tr>
+  <tr>
+   <td class="h" style="height:128px;">金　利</td>
+   <td><div class="rate"><table><tr><td class="rl"><span>日本10年国債</span>{{JP10Y}}</tr></table></div></td>
+   <td><div class="rate"><table><tr><td class="rl"><span>米国10年国債</span>{{US10Y}}</tr></table></div></td>
+  </tr>
  </table>
- <div id="note">データ更新 {{UPDATED}}　※株価は遅延値・NY市場は前営業日終値　参考情報であり正確性を保証するものではありません</div>
+ <div id="note">データ更新 {{UPDATED}}　※株価は遅延値・NY市場は前営業日終値・日本国債は財務省公表の前営業日値　参考情報であり正確性を保証するものではありません</div>
 </div>
 <script>
 function fit(){
