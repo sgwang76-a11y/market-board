@@ -270,7 +270,9 @@ body{font-family:"Noto Sans JP","Noto Sans CJK JP","Meiryo","Hiragino Sans",sans
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;
   background:#d3e0f5;-webkit-transform-origin:0 0;transform-origin:0 0;}
 #clock{position:absolute;left:70px;top:25px;font-size:120px;font-weight:bold;color:#e0357f;line-height:1.1;}
-#date{position:absolute;right:80px;top:60px;font-size:48px;font-weight:bold;color:#1a2a6c;}
+#logo{position:absolute;right:80px;top:24px;}
+#logo img{height:56px;display:block;}
+#date{position:absolute;right:80px;top:92px;font-size:48px;font-weight:bold;color:#1a2a6c;}
 table.b{position:absolute;left:60px;top:160px;width:1800px;border-collapse:separate;border-spacing:24px 10px;table-layout:fixed;}
 td{vertical-align:top;padding:0;}
 .h{background:#1f2fb8;color:#fff;text-align:center;font-size:50px;font-weight:bold;letter-spacing:8px;height:72px;vertical-align:middle;}
@@ -295,6 +297,7 @@ td{vertical-align:top;padding:0;}
 <body>
 <div id="stage">
  <div id="clock">--:--</div>
+ <div id="logo"><img src="logo.png" alt="青山メインランド"></div>
  <div id="date"></div>
  <table class="b">
   <tr>
