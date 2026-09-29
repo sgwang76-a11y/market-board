@@ -16,6 +16,9 @@ import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import weather  # noqa: E402
+
 JST = timezone(timedelta(hours=9))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.path.join(ROOT, "data.json")
@@ -222,6 +225,14 @@ def main():
         if r:
             data[k] = {"price": r[0], "prev": r[1], "at": now.strftime("%Y-%m-%d %H:%M")}
 
+    wx = weather.fetch_weather()
+    wdata = data.get("weather") or {}
+    for k in ("weekly", "hourly"):
+        if wx.get(k):
+            wdata[k] = wx[k]
+            wdata["at"] = now.strftime("%m/%d %H:%M")
+    data["weather"] = wdata
+
     with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
 
@@ -249,6 +260,10 @@ def main():
         "{{JP10Y}}":  rate("jp10y"),
         "{{US10Y}}":  rate("us10y"),
         "{{UPDATED}}": now.strftime("%m/%d %H:%M"),
+        "{{WEEK_E}}": weather.render_weekly(wdata.get("weekly"), weather.EAST, "東日本"),
+        "{{WEEK_W}}": weather.render_weekly(wdata.get("weekly"), weather.WEST, "西日本"),
+        "{{HOURLY}}": weather.render_hourly(wdata.get("hourly")),
+        "{{WX_UPDATED}}": wdata.get("at", "―"),
     }
     for a, b in repl.items():
         html = html.replace(a, b)
@@ -262,7 +277,7 @@ TEMPLATE = u"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1920">
-<meta http-equiv="refresh" content="600">
+<meta http-equiv="refresh" content="1800">
 <title>マーケット情報</title>
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#c9d8f0;}
@@ -291,7 +306,37 @@ td{vertical-align:top;padding:0;}
 .rc{font-size:30px;font-weight:bold;color:#222;margin-top:12px;white-space:nowrap;}
 .rc .up,.rc .dn,.rc .fl{font-size:26px;}
 .rv{font-size:72px;font-weight:bold;color:#111;text-align:right;padding-right:36px;vertical-align:middle;white-space:nowrap;}
-#note{position:absolute;right:84px;bottom:6px;font-size:20px;color:#334;}
+#note,.note{position:absolute;right:84px;bottom:6px;font-size:20px;color:#334;}
+.slide{display:none;}
+#ttl{position:absolute;left:380px;width:1100px;top:52px;text-align:center;font-size:52px;font-weight:bold;color:#1a2a6c;letter-spacing:4px;}
+#pg{position:absolute;left:84px;bottom:12px;}
+#pg span{display:inline-block;width:16px;height:16px;border-radius:8px;background:#9fb3d9;margin-right:10px;}
+#pg span.on{background:#1f2fb8;}
+table.wk{position:absolute;left:60px;top:170px;width:1800px;border-collapse:separate;border-spacing:4px;table-layout:fixed;}
+table.wk th{height:64px;background:#1f2fb8;color:#fff;font-size:34px;font-weight:bold;vertical-align:middle;}
+table.wk th span{font-size:26px;}
+table.wk th.wc{width:200px;font-size:30px;background:#3c4a8f;}
+table.wk th.sat{background:#2f6fd6;} table.wk th.sun{background:#d9463d;}
+td.wn{height:74px;background:#1f2fb8;color:#fff;font-size:36px;font-weight:bold;text-align:center;vertical-align:middle;}
+td.wv{background:#fff;vertical-align:middle;}
+td.wv.sat{background:#eef4ff;} td.wv.sun{background:#fff1f0;}
+table.wi{width:100%;border-collapse:collapse;}
+table.wi td.ic{width:64px;padding-left:10px;vertical-align:middle;}
+table.wi td.ic svg{display:block;}
+table.wi td.tt{text-align:center;vertical-align:middle;white-space:nowrap;font-weight:bold;}
+.hi{font-size:34px;color:#d9302a;} .lo{font-size:34px;color:#1f5fd0;} .sl{font-size:28px;color:#888;margin:0 4px;}
+.pp{font-size:22px;color:#1f5fd0;line-height:1.1;}
+#hgrid{position:absolute;left:60px;top:175px;width:1800px;text-align:center;}
+.hc{display:none;width:282px;height:410px;margin:0 6px 14px 6px;background:#fff;text-align:center;vertical-align:top;overflow:hidden;}
+.hd{font-size:24px;color:#667;margin-top:8px;line-height:1.2;}
+.ht{font-size:46px;font-weight:bold;color:#1a2a6c;line-height:1.1;}
+.hi2 svg{display:block;margin:2px auto 0 auto;}
+.hl{font-size:28px;font-weight:bold;color:#333;line-height:1.2;}
+.hT{font-size:54px;font-weight:bold;color:#111;line-height:1.15;}
+.hT span,.hr span,.hw span{font-size:0.55em;margin-left:2px;}
+.hr{font-size:26px;font-weight:bold;color:#1f5fd0;line-height:1.3;}
+.hw{font-size:26px;font-weight:bold;color:#445;line-height:1.3;}
+.wx-empty{position:absolute;left:0;width:1920px;top:480px;text-align:center;font-size:48px;color:#556;}
 </style>
 </head>
 <body>
@@ -299,6 +344,8 @@ td{vertical-align:top;padding:0;}
  <div id="clock">--:--</div>
  <div id="logo"><img src="logo.png" alt="青山メインランド"></div>
  <div id="date"></div>
+ <div id="ttl"></div>
+ <div class="slide" id="s0">
  <table class="b">
   <tr>
    <td class="blank"></td>
@@ -327,6 +374,17 @@ td{vertical-align:top;padding:0;}
   </tr>
  </table>
  <div id="note">データ更新 {{UPDATED}}　※株価は遅延値・NY市場は前営業日終値・日本国債は財務省公表の前営業日値　参考情報であり正確性を保証するものではありません</div>
+ </div>
+ <div class="slide" id="s1">
+  <div id="wkA">{{WEEK_E}}</div>
+  <div id="wkB" style="display:none;">{{WEEK_W}}</div>
+  <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com（気象庁ほかの数値予報モデル）　最高／最低気温℃・&#9730;降水確率</div>
+ </div>
+ <div class="slide" id="s2">
+  {{HOURLY}}
+  <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com（気象庁ほかの数値予報モデル）　&#9730;1時間降水量・降水確率／風向・風速</div>
+ </div>
+ <div id="pg"><span></span><span></span><span></span></div>
 </div>
 <script>
 function fit(){
@@ -344,7 +402,52 @@ function tick(){
   document.getElementById('clock').innerHTML=d.getHours()+':'+p2(d.getMinutes());
   document.getElementById('date').innerHTML=(d.getMonth()+1)+'月'+d.getDate()+'日（'+'日月火水木金土'.charAt(d.getDay())+'）';
 }
-window.onresize=fit; fit(); tick(); setInterval(tick,5000);
+/* ---- 画面切り替え：マーケット4分 → 週間天気3分（東1分半・西1分半）→ 1時間天気3分 ---- */
+var CYCLE=600, lastPos=-1, lastIdx=-1;
+var TITLES=['','週間天気予報　政令指定都市','千代田区　1時間ごとの天気予報'];
+function $(id){return document.getElementById(id);}
+function showHourly(){
+  var g=$('hgrid'); if(!g) return;
+  var cs=g.getElementsByTagName('div'), now=Math.floor(new Date().getTime()/3600000)*3600, n=0, i;
+  for(i=0;i<cs.length;i++){
+    if(cs[i].className!=='hc') continue;
+    var t=parseInt(cs[i].getAttribute('data-t'),10);
+    if(t>=now && n<12){cs[i].style.display='inline-block'; n++;} else {cs[i].style.display='none';}
+  }
+}
+function safeReload(){
+  var base=location.href.split('?')[0], x;
+  try{
+    x=new XMLHttpRequest();
+    x.open('GET',base+'?chk='+new Date().getTime(),true);
+    x.onreadystatechange=function(){
+      if(x.readyState===4 && x.status===200){ location.replace(base+'?t='+new Date().getTime()); }
+    };
+    x.send(null);
+  }catch(e){}
+}
+function rotate(){
+  var pos=Math.floor(new Date().getTime()/1000)%CYCLE;
+  if(lastPos>=0 && pos<lastPos){ safeReload(); }
+  lastPos=pos;
+  var idx=pos<240?0:(pos<420?1:2), i;
+  if(idx!==lastIdx){
+    for(i=0;i<3;i++){ $('s'+i).style.display=(i===idx)?'block':'none'; }
+    var dots=$('pg').getElementsByTagName('span');
+    for(i=0;i<dots.length;i++){ dots[i].className=(i===idx)?'on':''; }
+    if(idx===2) showHourly();
+    lastIdx=idx;
+  }
+  if(idx===1){
+    var east=(pos-240)<90;
+    $('wkA').style.display=east?'block':'none';
+    $('wkB').style.display=east?'none':'block';
+    $('ttl').innerHTML=TITLES[1]+'<span style="font-size:36px;">（'+(east?'東日本':'西日本')+'）</span>';
+  } else {
+    $('ttl').innerHTML=TITLES[idx];
+  }
+}
+window.onresize=fit; fit(); tick(); rotate(); setInterval(tick,5000); setInterval(rotate,1000);
 </script>
 </body>
 </html>
