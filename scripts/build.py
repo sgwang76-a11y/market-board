@@ -227,6 +227,16 @@ def main():
 
     wx = weather.fetch_weather()
     wdata = data.get("weather") or {}
+    # 今日の最高気温など、発表時刻によって新しいデータに無い値は前回値を引き継ぐ
+    old_weekly = wdata.get("weekly") or {}
+    for city, days in (wx.get("weekly") or {}).items():
+        prev = {d["date"]: d for d in old_weekly.get(city, [])}
+        for d in days:
+            p = prev.get(d["date"])
+            if p and p.get("jma") == d.get("jma"):
+                for f in ("tmax", "tmin", "pop", "code"):
+                    if d.get(f) is None and p.get(f) is not None:
+                        d[f] = p[f]
     for k in ("weekly", "hourly"):
         if wx.get(k):
             wdata[k] = wx[k]
@@ -324,7 +334,7 @@ td.wn{height:74px;background:#1f2fb8;color:#fff;font-size:36px;font-weight:bold;
 td.wv{background:#fff;vertical-align:middle;}
 td.wv.sat{background:#eef4ff;} td.wv.sun{background:#fff1f0;}
 table.wi{width:100%;border-collapse:collapse;}
-table.wi td.ic{width:64px;padding-left:10px;vertical-align:middle;}
+table.wi td.ic{width:88px;padding-left:6px;vertical-align:middle;}
 table.wi td.ic svg{display:block;}
 table.wi td.tt{text-align:center;vertical-align:middle;white-space:nowrap;font-weight:bold;}
 .hi{font-size:34px;color:#d9302a;} .lo{font-size:34px;color:#1f5fd0;} .sl{font-size:28px;color:#888;margin:0 4px;}
@@ -340,9 +350,9 @@ table.wi td.tt{text-align:center;vertical-align:middle;white-space:nowrap;font-w
 .hr{font-size:26px;font-weight:bold;color:#1f5fd0;line-height:1.3;}
 .hw{font-size:26px;font-weight:bold;color:#445;line-height:1.3;}
 .jmap{position:absolute;left:0;top:0;width:1920px;height:1080px;}
-.mc{position:absolute;width:150px;height:140px;background:#fff;text-align:center;border-radius:8px;
+.mc{position:absolute;width:150px;height:146px;background:#fff;text-align:center;border-radius:8px;
   box-shadow:0 3px 8px rgba(0,40,90,0.25);overflow:hidden;}
-.mn{font-size:26px;font-weight:bold;color:#1a2a6c;line-height:1.25;margin-top:2px;}
+.mn{font-size:26px;font-weight:bold;color:#1a2a6c;line-height:1.15;margin-top:2px;}
 .mc svg{display:block;margin:-2px auto 0 auto;}
 .mt{line-height:1.0;white-space:nowrap;font-weight:bold;}
 .mt .hi,.mt .lo{font-size:30px;}
@@ -389,15 +399,15 @@ table.wi td.tt{text-align:center;vertical-align:middle;white-space:nowrap;font-w
  <div class="slide" id="s1">
   <div id="wkA">{{WEEK_E}}</div>
   <div id="wkB" style="display:none;">{{WEEK_W}}</div>
-  <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com（気象庁ほかの数値予報モデル）　最高／最低気温℃・&#9730;降水確率</div>
+  <div class="note">予報取得 {{WX_UPDATED}}　出典：気象庁ホームページ（府県天気予報・週間天気予報）をもとに作成　最高／最低気温℃・&#9730;降水確率</div>
  </div>
  <div class="slide" id="s2">
   {{HOURLY}}
-  <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com（気象庁ほかの数値予報モデル）　&#9730;1時間降水量・降水確率／風向・風速</div>
+  <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com（気象庁の数値予報モデル）　&#9730;1時間降水量・降水確率／風向・風速</div>
  </div>
  <div class="slide" id="s3">
   {{MAP}}
-  <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com　地図：国土地理院「地球地図日本」をもとに作成　最高／最低気温℃・&#9730;降水確率</div>
+  <div class="note">予報取得 {{WX_UPDATED}}　出典：気象庁ホームページ（府県天気予報）をもとに作成　地図：国土地理院「地球地図日本」をもとに作成　最高／最低気温℃・&#9730;降水確率</div>
  </div>
  <div id="pg"><span></span><span></span><span></span><span></span><span></span></div>
 </div>
