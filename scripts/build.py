@@ -420,7 +420,7 @@ function tick(){
 /* ---- 画面切り替え：マーケット4分 → 週間天気3分（東1分半・西1分半）→ 1時間天気3分 ---- */
 var CYCLE=600, lastPos=-1, lastIdx=-1;
 var ORDER=['s0','s1','s1','s3','s2'];
-var TITLES=['','週間天気予報','週間天気予報','全国の天気　{{MAP_LABEL}}','千代田区　1時間ごとの天気予報'];
+var TITLES=['','週間天気予報','週間天気予報','全国の天気','千代田区　1時間ごとの天気予報'];
 function $(id){return document.getElementById(id);}
 function showHourly(){
   var g=$('hgrid'); if(!g) return;

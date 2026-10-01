@@ -2,7 +2,7 @@
 """
 天気予報パーツ（build.py から呼び出し）
 - 全国主要17都市の週間天気予報（東日本／西日本）
-- 全国の天気マップ（今日／17時以降は明日）
+- 全国の天気マップ（今日）
 - 千代田区の1時間ごとの天気予報
 地図：国土地理院「地球地図日本」をもとに作成（jpn-atlas, BSD-3-Clause）
 データ：Open-Meteo（無料・登録不要。日本付近は気象庁モデル等を使用） https://open-meteo.com/
@@ -221,11 +221,11 @@ def render_hourly(hourly):
 
 
 def render_map(weekly):
-    """全国天気マップ（今日。17時以降は明日）"""
+    """全国天気マップ（今日の天気）"""
     if not weekly:
         return '<div class="wx-empty">天気データを取得できませんでした</div>', ""
     now = datetime.now(JST)
-    idx = 1 if now.hour >= 17 else 0
+    idx = 0  # 常に今日の天気（タイトルに日付を出さないため、明日への切り替えはしない）
     lines, cards, label = [], [], ""
     for name, (px, py, cx, cy) in MAP_POS.items():
         days = weekly.get(name)
