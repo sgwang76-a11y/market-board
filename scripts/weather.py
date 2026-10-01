@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 天気予報パーツ（build.py から呼び出し）
-- 政令指定都市20市の週間天気予報
+- 全国主要17都市の週間天気予報（東日本／西日本）
+- 全国の天気マップ（今日／17時以降は明日）
 - 千代田区の1時間ごとの天気予報
+地図：国土地理院「地球地図日本」をもとに作成（jpn-atlas, BSD-3-Clause）
 データ：Open-Meteo（無料・登録不要。日本付近は気象庁モデル等を使用） https://open-meteo.com/
 """
 import json
@@ -14,14 +16,23 @@ from datetime import datetime, timedelta, timezone
 JST = timezone(timedelta(hours=9))
 UA = "Mozilla/5.0 market-board-signage"
 
-EAST = [("札幌", 43.0621, 141.3544), ("仙台", 38.2682, 140.8694), ("さいたま", 35.8617, 139.6455),
-        ("千葉", 35.6073, 140.1063), ("川崎", 35.5308, 139.7029), ("横浜", 35.4437, 139.6380),
-        ("相模原", 35.5714, 139.3733), ("新潟", 37.9161, 139.0364), ("静岡", 34.9756, 138.3828),
-        ("浜松", 34.7108, 137.7261)]
-WEST = [("名古屋", 35.1815, 136.9066), ("京都", 35.0116, 135.7681), ("大阪", 34.6937, 135.5023),
-        ("堺", 34.5733, 135.4830), ("神戸", 34.6901, 135.1956), ("岡山", 34.6551, 133.9195),
-        ("広島", 34.3853, 132.4553), ("北九州", 33.8835, 130.8752), ("福岡", 33.5904, 130.4017),
-        ("熊本", 32.8032, 130.7079)]
+EAST = [("札幌", 43.0621, 141.3544), ("釧路", 42.9849, 144.3820), ("秋田", 39.7200, 140.1025),
+        ("仙台", 38.2682, 140.8694), ("新潟", 37.9161, 139.0364), ("長野", 36.6485, 138.1950),
+        ("東京", 35.6940, 139.7536), ("小笠原", 27.0944, 142.1914)]
+WEST = [("金沢", 36.5613, 136.6562), ("名古屋", 35.1815, 136.9066), ("大阪", 34.6937, 135.5023),
+        ("松江", 35.4723, 133.0505), ("広島", 34.3853, 132.4553), ("高知", 33.5597, 133.5311),
+        ("福岡", 33.5904, 130.4017), ("鹿児島", 31.5966, 130.5571), ("那覇", 26.2124, 127.6809)]
+
+# 天気マップ上の位置： 都市名 → (地図上の点 x,y, カード左上 x,y)  ※1920x1080の画面座標
+MAP_POS = {
+    "札幌": (1152, 351, 975, 220), "釧路": (1275, 349, 1450, 352), "秋田": (1105, 537, 1225, 392),
+    "仙台": (1139, 616, 1225, 542), "新潟": (1060, 637, 900, 448), "長野": (1023, 707, 1225, 842),
+    "東京": (1093, 760, 1225, 692), "小笠原": (1679, 912, 1740, 862), "金沢": (954, 711, 742, 455),
+    "名古屋": (964, 788, 1058, 888), "大阪": (900, 814, 902, 888), "松江": (790, 766, 714, 606),
+    "広島": (760, 824, 556, 596), "高知": (807, 873, 746, 888), "福岡": (663, 862, 430, 748),
+    "鹿児島": (662, 972, 430, 888), "那覇": (395, 300, 600, 186),
+}
+CARD_W, CARD_H = 150, 140
 CHIYODA = (35.6940, 139.7536)
 
 API = "https://api.open-meteo.com/v1/forecast"
@@ -48,6 +59,8 @@ def fetch_weather():
         if isinstance(res, dict):
             res = [res]
         weekly = {}
+        if len(res) != len(cities):
+            raise ValueError("city count mismatch")
         for (name, _, _), r in zip(cities, res):
             d = r["daily"]
             weekly[name] = [{"date": d["time"][i], "code": d["weather_code"][i],
@@ -205,3 +218,39 @@ def render_hourly(hourly):
                "" if h["pop"] is None else "%d%%" % h["pop"],
                dir_, "―" if h["ws"] is None else "%.0f" % h["ws"]))
     return '<div id="hgrid">%s</div>' % "".join(items)
+
+
+def render_map(weekly):
+    """全国天気マップ（今日。17時以降は明日）"""
+    if not weekly:
+        return '<div class="wx-empty">天気データを取得できませんでした</div>', ""
+    now = datetime.now(JST)
+    idx = 1 if now.hour >= 17 else 0
+    lines, cards, label = [], [], ""
+    for name, (px, py, cx, cy) in MAP_POS.items():
+        days = weekly.get(name)
+        if not days or len(days) <= idx:
+            continue
+        d = days[idx]
+        if not label:
+            dt = datetime.strptime(d["date"], "%Y-%m-%d")
+            label = "%s（%d/%d %s）" % ("明日" if idx else "今日", dt.month, dt.day, WEEK[dt.weekday()])
+        ccx, ccy = cx + CARD_W // 2, cy + CARD_H // 2
+        lines.append('<line x1="%d" y1="%d" x2="%d" y2="%d"/>' % (px, py, ccx, ccy))
+        lines.append('<circle cx="%d" cy="%d" r="6"/>' % (px, py))
+        pop = "" if d["pop"] is None else "%d%%" % d["pop"]
+        cards.append(
+            '<div class="mc" style="left:%dpx;top:%dpx;"><div class="mn">%s</div>%s'
+            '<div class="mt"><span class="hi">%s</span><span class="sl">/</span><span class="lo">%s</span></div>'
+            '<div class="mp">&#9730; %s</div></div>'
+            % (cx, cy, name, icon(d["code"], 50), _r(d["tmax"]), _r(d["tmin"]), pop))
+    import os
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "japan_map.svg"), encoding="utf-8") as f:
+            base = f.read()
+    except Exception:
+        base = '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"></svg>'
+    overlay = '<g stroke="#e0357f" stroke-width="2" fill="#e0357f">%s</g></svg>' % "".join(lines)
+    svg = base.replace("</svg>", overlay)
+    svg = svg.replace("<svg ", '<svg class="jmap" ', 1)
+    return svg + "".join(cards), label

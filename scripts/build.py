@@ -249,6 +249,7 @@ def main():
             return '<div class="rc">&nbsp;</div></td><td class="rv">―</td>'
         return '<div class="rc">%s</div></td><td class="rv">%s</td>' % (rate_diff(d["price"] - d["prev"]), fmt_rate(d["price"]))
 
+    map_html, map_label = weather.render_map(wdata.get("weekly"))
     html = TEMPLATE
     repl = {
         "{{USDJPY}}": cell("usdjpy", fmt_fx, fx_diff),
@@ -263,6 +264,8 @@ def main():
         "{{WEEK_E}}": weather.render_weekly(wdata.get("weekly"), weather.EAST, "東日本"),
         "{{WEEK_W}}": weather.render_weekly(wdata.get("weekly"), weather.WEST, "西日本"),
         "{{HOURLY}}": weather.render_hourly(wdata.get("hourly")),
+        "{{MAP}}": map_html,
+        "{{MAP_LABEL}}": map_label,
         "{{WX_UPDATED}}": wdata.get("at", "―"),
     }
     for a, b in repl.items():
@@ -336,6 +339,14 @@ table.wi td.tt{text-align:center;vertical-align:middle;white-space:nowrap;font-w
 .hT span,.hr span,.hw span{font-size:0.55em;margin-left:2px;}
 .hr{font-size:26px;font-weight:bold;color:#1f5fd0;line-height:1.3;}
 .hw{font-size:26px;font-weight:bold;color:#445;line-height:1.3;}
+.jmap{position:absolute;left:0;top:0;width:1920px;height:1080px;}
+.mc{position:absolute;width:150px;height:140px;background:#fff;text-align:center;border-radius:8px;
+  box-shadow:0 3px 8px rgba(0,40,90,0.25);overflow:hidden;}
+.mn{font-size:26px;font-weight:bold;color:#1a2a6c;line-height:1.25;margin-top:2px;}
+.mc svg{display:block;margin:-2px auto 0 auto;}
+.mt{line-height:1.0;white-space:nowrap;font-weight:bold;}
+.mt .hi,.mt .lo{font-size:30px;}
+.mp{font-size:22px;font-weight:bold;color:#1f5fd0;line-height:1.3;}
 .wx-empty{position:absolute;left:0;width:1920px;top:480px;text-align:center;font-size:48px;color:#556;}
 </style>
 </head>
@@ -384,7 +395,11 @@ table.wi td.tt{text-align:center;vertical-align:middle;white-space:nowrap;font-w
   {{HOURLY}}
   <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com（気象庁ほかの数値予報モデル）　&#9730;1時間降水量・降水確率／風向・風速</div>
  </div>
- <div id="pg"><span></span><span></span><span></span></div>
+ <div class="slide" id="s3">
+  {{MAP}}
+  <div class="note">予報取得 {{WX_UPDATED}}　Weather data by Open-Meteo.com　地図：国土地理院「地球地図日本」をもとに作成　最高／最低気温℃・&#9730;降水確率</div>
+ </div>
+ <div id="pg"><span></span><span></span><span></span><span></span><span></span></div>
 </div>
 <script>
 function fit(){
@@ -404,7 +419,8 @@ function tick(){
 }
 /* ---- 画面切り替え：マーケット4分 → 週間天気3分（東1分半・西1分半）→ 1時間天気3分 ---- */
 var CYCLE=600, lastPos=-1, lastIdx=-1;
-var TITLES=['','週間天気予報　政令指定都市','千代田区　1時間ごとの天気予報'];
+var ORDER=['s0','s1','s1','s3','s2'];
+var TITLES=['','週間天気予報','週間天気予報','全国の天気　{{MAP_LABEL}}','千代田区　1時間ごとの天気予報'];
 function $(id){return document.getElementById(id);}
 function showHourly(){
   var g=$('hgrid'); if(!g) return;
@@ -430,19 +446,21 @@ function rotate(){
   var pos=Math.floor(new Date().getTime()/1000)%CYCLE;
   if(lastPos>=0 && pos<lastPos){ safeReload(); }
   lastPos=pos;
-  var idx=pos<240?0:(pos<420?1:2), i;
+  var idx=Math.floor(pos/120), i;
+  if(idx>4) idx=4;
   if(idx!==lastIdx){
-    for(i=0;i<3;i++){ $('s'+i).style.display=(i===idx)?'block':'none'; }
+    var sl=['s0','s1','s2','s3'];
+    for(i=0;i<sl.length;i++){ $(sl[i]).style.display=(sl[i]===ORDER[idx])?'block':'none'; }
     var dots=$('pg').getElementsByTagName('span');
     for(i=0;i<dots.length;i++){ dots[i].className=(i===idx)?'on':''; }
-    if(idx===2) showHourly();
+    if(idx===4) showHourly();
     lastIdx=idx;
   }
-  if(idx===1){
-    var east=(pos-240)<90;
+  if(idx===1||idx===2){
+    var east=(idx===1);
     $('wkA').style.display=east?'block':'none';
     $('wkB').style.display=east?'none':'block';
-    $('ttl').innerHTML=TITLES[1]+'<span style="font-size:36px;">（'+(east?'東日本':'西日本')+'）</span>';
+    $('ttl').innerHTML=TITLES[1]+'<span style="font-size:40px;">　'+(east?'東日本':'西日本')+'</span>';
   } else {
     $('ttl').innerHTML=TITLES[idx];
   }
